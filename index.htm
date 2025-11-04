@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>WebGL 3D Axes with Mouse Rotation</title>
+<style>
+  html,body{margin:0;height:100%;background:#111}
+  canvas{display:block;cursor:grab}
+  canvas:active{cursor:grabbing}
+</style>
+</head>
+<body>
+<canvas id="glcanvas" width="840" height="480"></canvas>
+<script>
+const gl = document.getElementById("glcanvas").getContext("webgl");
+if(!gl){alert("No WebGL");throw new Error();}
+
+// ===== Shaders (we rotate in shader itself) =====
+const vs = `
+attribute vec3 aPosition;
+attribute vec3 aColor;
+uniform float uRotX;
+uniform float uRotY;
+varying vec3 vColor;
+
+mat4 rotateX(float a){
+  float c=cos(a), s=sin(a);
+  return mat4(
+    1.0,0.0,0.0,0.0,
+    0.0,c,s,0.0,
+    0.0,-s,c,0.0,
+    0.0,0.0,0.0,1.0);
+}
+mat4 rotateY(float a){
+  float c=cos(a), s=sin(a);
+  return mat4(
+    c,0.0,-s,0.0,
+    0.0,1.0,0.0,0.0,
+    s,0.0,c,0.0,
+    0.0,0.0,0.0,1.0);
+}
+
+void main(){
+  mat4 rot = rotateY(uRotY) * rotateX(uRotX);
+  vec4 pos = rot * vec4(aPosition,1.0);
+  gl_Position = vec4(pos.xyz * 0.98, 1.0); // scale down so it fits view
+  vColor = aColor;
+}`;
+const fs = `
+precision mediump float;
+varying vec3 vColor;
+void main(){ gl_FragColor = vec4(vColor,1.0); }`;
+
+function compile(type,src){
+  const s=gl.createShader(type);
+  gl.shaderSource(s,src);
+  gl.compileShader(s);
+  if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))
+    console.error(gl.getShaderInfoLog(s));
+  return s;
+}
+const prog=gl.createProgram();
+gl.attachShader(prog,compile(gl.VERTEX_SHADER,vs));
+gl.attachShader(prog,compile(gl.FRAGMENT_SHADER,fs));
+gl.linkProgram(prog);
+gl.useProgram(prog);
+
+// ===== Axes data =====
+const verts = new Float32Array([
+  // X (red)
+  0,0,0,  1,0,0,
+  1,0,0,  1,0,0,
+  // Y (green)
+  0,0,0,  0,1,0,
+  0,1,0,  0,1,0,
+  // Z (blue)
+  0,0,0,  0,0,1,
+  0,0,1,  0,0,1
+]);
+const FSIZE = verts.BYTES_PER_ELEMENT;
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, verts, gl.STATIC_DRAW);
+const aPos = gl.getAttribLocation(prog, "aPosition");
+const aCol = gl.getAttribLocation(prog, "aColor");
+gl.vertexAttribPointer(aPos, 3, gl.FLOAT, false, FSIZE*6, 0);
+gl.enableVertexAttribArray(aPos);
+gl.vertexAttribPointer(aCol, 3, gl.FLOAT, false, FSIZE*6, FSIZE*3);
+gl.enableVertexAttribArray(aCol);
+
+const uRotX = gl.getUniformLocation(prog, "uRotX");
+const uRotY = gl.getUniformLocation(prog, "uRotY");
+
+// ===== Mouse Control =====
+let rotX = 0, rotY = 0;
+let dragging = false, lastX = 0, lastY = 0;
+const canvas = gl.canvas;
+canvas.addEventListener("mousedown", e => {
+  dragging = true;
+  lastX = e.clientX; lastY = e.clientY;
+});
+canvas.addEventListener("mouseup", () => dragging = false);
+canvas.addEventListener("mouseleave", () => dragging = false);
+canvas.addEventListener("mousemove", e => {
+  if(!dragging) return;
+  rotY = (e.clientX - lastX) * 0.01;
+  rotX = (e.clientY - lastY) * 0.01;
+});
+
+// ===== Draw Loop =====
+function draw(){
+  gl.viewport(0,0,canvas.width,canvas.height);
+  gl.clearColor(0.4,0.4,0.4,1);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.lineWidth(5.0);
+  gl.uniform1f(uRotX, rotX);
+  gl.uniform1f(uRotY, rotY);
+  gl.drawArrays(gl.LINES, 0, 6);
+  requestAnimationFrame(draw);
+}
+draw();
+</script>
+</body>
+</html>
